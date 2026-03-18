@@ -103,7 +103,7 @@ async function fetchReports() {
 async function generateReport() {
   generating.value = true
   try {
-    currentReport.value = await reportApi.generate(reportTitle.value, selectedRasterId.value)
+    currentReport.value = await reportApi.generate({ title: reportTitle.value, raster_id: selectedRasterId.value })
     downloadUrl.value = reportApi.downloadUrl(currentReport.value.id)
     reports.value.unshift(currentReport.value)
     if (!currentReport.value.file_path) {

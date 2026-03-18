@@ -21,8 +21,8 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="山西省 WebGIS 平台 API",
-    version="1.0.0",
+    title="煤矿资源分析系统 API",
+    version="2.0.0",
     lifespan=lifespan,
 )
 
@@ -37,7 +37,7 @@ app.add_middleware(
 os.makedirs(str(settings.reports_dir), exist_ok=True)
 app.mount("/files/reports", StaticFiles(directory=str(settings.reports_dir)), name="reports")
 
-from app.api import rasters, wells, tasks, reports, analytics, fusion, ai  # noqa: E402
+from app.api import rasters, wells, tasks, reports, analytics, fusion, ai, cross_validation, enrichment  # noqa: E402
 
 app.include_router(rasters.router, prefix="/api")
 app.include_router(wells.router, prefix="/api")
@@ -46,6 +46,8 @@ app.include_router(reports.router, prefix="/api")
 app.include_router(analytics.router, prefix="/api")
 app.include_router(fusion.router, prefix="/api")
 app.include_router(ai.router, prefix="/api")
+app.include_router(cross_validation.router, prefix="/api")
+app.include_router(enrichment.router, prefix="/api")
 
 
 @app.get("/healthz")
