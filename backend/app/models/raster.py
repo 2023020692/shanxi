@@ -27,5 +27,5 @@ class RasterAsset(Base):
     band_count = Column(Integer, nullable=True)
     resolution = Column(Float, nullable=True)
     status = Column(Enum(RasterStatus), default=RasterStatus.pending, nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.utcnow())
+    updated_at = Column(DateTime, default=lambda: datetime.utcnow(), onupdate=lambda: datetime.utcnow())

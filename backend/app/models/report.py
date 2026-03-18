@@ -14,4 +14,4 @@ class Report(Base):
     title = Column(String, nullable=False)
     raster_id = Column(UUID(as_uuid=True), ForeignKey("raster_assets.id", ondelete="SET NULL"), nullable=True)
     file_path = Column(String, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.utcnow())

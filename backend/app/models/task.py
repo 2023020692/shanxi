@@ -12,5 +12,5 @@ class Job(Base):
     type = Column(String, nullable=False)
     status = Column(String, nullable=False, default="PENDING")
     result = Column(JSON, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.utcnow())
+    updated_at = Column(DateTime, default=lambda: datetime.utcnow(), onupdate=lambda: datetime.utcnow())

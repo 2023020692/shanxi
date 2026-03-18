@@ -59,7 +59,8 @@ function loadToMap(raster: RasterAsset) {
   if (!raster.cog_path || !props.mapViewRef) return
   const cogFilename = raster.cog_path.split('/').pop()
   const colormap = selectedColormap.value[raster.id] || 'viridis'
-  const url = `http://localhost:8080/cog/tiles/{z}/{x}/{y}.png?url=/data/processed/${cogFilename}&colormap_name=${colormap}`
+  const titilerBase = import.meta.env.VITE_TITILER_URL || 'http://localhost:8080'
+  const url = `${titilerBase}/cog/tiles/{z}/{x}/{y}.png?url=/data/processed/${cogFilename}&colormap_name=${colormap}`
   props.mapViewRef.addRasterLayer(url, raster.filename)
 }
 
