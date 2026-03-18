@@ -3,6 +3,10 @@ WORKDIR /app
 COPY package.json package-lock.json* ./
 RUN npm install
 COPY . .
+ARG VITE_TITILER_URL=http://localhost:8080
+ARG VITE_TIANDITU_TOKEN=
+ENV VITE_TITILER_URL=$VITE_TITILER_URL
+ENV VITE_TIANDITU_TOKEN=$VITE_TIANDITU_TOKEN
 RUN npm run build
 
 FROM nginx:alpine
