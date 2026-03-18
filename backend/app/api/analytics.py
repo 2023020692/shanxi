@@ -1,33 +1,31 @@
 import math
 from collections import defaultdict
 
-from fastapi import APIRouter, Depends, Query
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import text
+from fastapi import APIRouter, Query
 
-from app.database import get_db
+import app.storage as storage
 
 router = APIRouter(tags=["analytics"])
 
 
 @router.get("/analytics/heatgrid")
 async def heatgrid(
-    db: AsyncSession = Depends(get_db),
     resolution: float = Query(default=0.5, ge=0.01, le=5.0, description="Grid cell size in degrees"),
 ):
     """Return well density grid as GeoJSON FeatureCollection."""
-    result = await db.execute(
-        text("SELECT ST_X(geom) as lon, ST_Y(geom) as lat FROM mine_wells")
-    )
-    rows = result.fetchall()
+    geojson = storage.load_wells()
+    coords = [
+        (f["geometry"]["coordinates"][0], f["geometry"]["coordinates"][1])
+        for f in geojson.get("features", [])
+    ]
 
-    if not rows:
+    if not coords:
         return {"type": "FeatureCollection", "features": [], "total_wells": 0}
 
     grid: dict[tuple[int, int], int] = defaultdict(int)
-    for row in rows:
-        gi = math.floor(row.lon / resolution)
-        gj = math.floor(row.lat / resolution)
+    for lon, lat in coords:
+        gi = math.floor(lon / resolution)
+        gj = math.floor(lat / resolution)
         grid[(gi, gj)] += 1
 
     features = []
@@ -46,27 +44,26 @@ async def heatgrid(
     return {
         "type": "FeatureCollection",
         "features": features,
-        "total_wells": len(rows),
+        "total_wells": len(coords),
         "grid_cells": len(features),
     }
 
 
 @router.get("/analytics/summary")
-async def summary(db: AsyncSession = Depends(get_db)):
+async def summary():
     """Return basic statistics about the platform data."""
-    wells_result = await db.execute(text("SELECT COUNT(*) as cnt FROM mine_wells"))
-    well_count = wells_result.scalar() or 0
+    geojson = storage.load_wells()
+    well_count = len(geojson.get("features", []))
 
-    raster_result = await db.execute(
-        text("SELECT status, COUNT(*) as cnt FROM raster_assets GROUP BY status")
-    )
-    raster_stats = {row.status: row.cnt for row in raster_result.fetchall()}
+    rasters = storage.list_rasters()
+    raster_stats: dict[str, int] = defaultdict(int)
+    for r in rasters:
+        raster_stats[r.get("status", "unknown")] += 1
 
-    report_result = await db.execute(text("SELECT COUNT(*) as cnt FROM reports"))
-    report_count = report_result.scalar() or 0
+    report_count = len(storage.list_reports())
 
     return {
         "well_count": well_count,
-        "raster_stats": raster_stats,
+        "raster_stats": dict(raster_stats),
         "report_count": report_count,
     }

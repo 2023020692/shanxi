@@ -83,4 +83,5 @@ export interface SAM2Result {
   }>
   heatmap_grid: Array<{ lon: number; lat: number; intensity: number }>
   message: string
+  created_at?: string
 }

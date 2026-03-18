@@ -32,7 +32,7 @@
       启动 SAM2 目标识别
     </el-button>
 
-    <!-- Results -->
+    <!-- Current Run Result -->
     <div v-if="result" class="result-section">
       <el-divider />
       <div class="result-header-row">
@@ -90,21 +90,149 @@
             <el-option value="inferno" label="Inferno" />
             <el-option value="viridis" label="Viridis" />
           </el-select>
-          <el-button size="small" type="success" @click="renderHeatmapToMap">
+          <el-button size="small" type="success" @click="renderHeatmapToMap(result!)">
             渲染热力图到地图
           </el-button>
         </div>
       </div>
     </div>
+
+    <!-- ── Historical Results List ── -->
+    <el-divider style="margin:14px 0 8px">
+      <span class="history-divider-label">
+        <el-icon><List /></el-icon>
+        历史识别结果
+      </span>
+    </el-divider>
+
+    <div class="history-refresh-row">
+      <span class="history-count">共 {{ allResults.length }} 条记录</span>
+      <el-button size="small" :loading="loadingHistory" @click="loadHistory" text type="primary">
+        <el-icon><Refresh /></el-icon>
+        刷新
+      </el-button>
+    </div>
+
+    <el-tabs v-model="activeHistoryTab" class="history-tabs" size="small">
+      <!-- Tab 1: Heatmap List -->
+      <el-tab-pane name="heatmap">
+        <template #label>
+          <span class="tab-label">
+            <el-icon><HeatMap /></el-icon>
+            热力图列表
+          </span>
+        </template>
+
+        <div v-if="heatmapResults.length === 0" class="empty-tip">暂无热力图数据</div>
+        <div v-else class="history-list">
+          <div
+            v-for="item in heatmapResults"
+            :key="item.detection_id"
+            class="history-item"
+          >
+            <div class="hi-info">
+              <span class="hi-filename" :title="item.filename">{{ item.filename }}</span>
+              <span class="hi-meta">
+                {{ item.heatmap_grid.length }} 格点 · {{ formatDate(item.created_at) }}
+              </span>
+            </div>
+            <div class="hi-actions">
+              <el-select
+                v-model="colormapMap[item.detection_id]"
+                size="small"
+                style="width:76px"
+                placeholder="Hot"
+                @click.stop
+              >
+                <el-option value="hot" label="Hot" />
+                <el-option value="plasma" label="Plasma" />
+                <el-option value="inferno" label="Inferno" />
+                <el-option value="viridis" label="Viridis" />
+              </el-select>
+              <el-button
+                size="small"
+                type="success"
+                @click="renderHeatmapToMap(item)"
+              >渲染</el-button>
+            </div>
+          </div>
+        </div>
+      </el-tab-pane>
+
+      <!-- Tab 2: Satellite Target Detection Results List -->
+      <el-tab-pane name="detection">
+        <template #label>
+          <span class="tab-label">
+            <el-icon><Aim /></el-icon>
+            卫星目标识别结果
+          </span>
+        </template>
+
+        <div v-if="detectionResults.length === 0" class="empty-tip">暂无目标识别结果</div>
+        <div v-else class="history-list">
+          <div
+            v-for="item in detectionResults"
+            :key="item.detection_id"
+            class="history-item history-item--detection"
+          >
+            <div class="hi-info">
+              <span class="hi-filename" :title="item.filename">{{ item.filename }}</span>
+              <span class="hi-meta">
+                识别到 <strong style="color:#90caf9">{{ item.detection_count }}</strong> 个目标
+                · {{ formatDate(item.created_at) }}
+              </span>
+            </div>
+            <!-- Top-3 detections inline -->
+            <div class="inline-dets">
+              <div
+                v-for="(d, i) in item.detections.slice(0, 3)"
+                :key="i"
+                class="inline-det"
+              >
+                <span class="inline-det-label">{{ d.label }}</span>
+                <el-progress
+                  :percentage="Math.round(d.confidence * 100)"
+                  :stroke-width="5"
+                  :color="confidenceColor(d.confidence)"
+                  style="flex:1;margin:0 6px"
+                />
+                <span class="inline-det-conf">{{ (d.confidence * 100).toFixed(0) }}%</span>
+              </div>
+              <p v-if="item.detections.length > 3" class="more-tip">
+                +{{ item.detections.length - 3 }} 个目标未展示
+              </p>
+            </div>
+          </div>
+        </div>
+      </el-tab-pane>
+    </el-tabs>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
-import { Cpu, Upload, Document } from '@element-plus/icons-vue'
+import { ref, computed, onMounted } from 'vue'
+import { Cpu, Upload, Document, List, Refresh } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import type { SAM2Result } from '../types'
 import { sam2Api } from '../api/sam2Api'
+
+// Custom icon components (inline SVG wrappers for icons not in Element-Plus icon set)
+const HeatMap = {
+  render() {
+    return h('svg', { viewBox: '0 0 1024 1024', width: '1em', height: '1em', fill: 'currentColor' }, [
+      h('path', { d: 'M512 64C264.6 64 64 264.6 64 512s200.6 448 448 448 448-200.6 448-448S759.4 64 512 64zm0 820c-205.4 0-372-166.6-372-372s166.6-372 372-372 372 166.6 372 372-166.6 372-372 372z' }),
+    ])
+  },
+}
+const Aim = {
+  render() {
+    return h('svg', { viewBox: '0 0 1024 1024', width: '1em', height: '1em', fill: 'currentColor' }, [
+      h('path', { d: 'M512 64C264.6 64 64 264.6 64 512s200.6 448 448 448 448-200.6 448-448S759.4 64 512 64zm0 820c-205.4 0-372-166.6-372-372s166.6-372 372-372 372 166.6 372 372-166.6 372-372 372zm0-550c-98.2 0-178 79.8-178 178s79.8 178 178 178 178-79.8 178-178-79.8-178-178-178zm0 280c-56.2 0-102-45.8-102-102s45.8-102 102-102 102 45.8 102 102-45.8 102-102 102z' }),
+    ])
+  },
+}
+
+import { h } from 'vue'
 
 const props = defineProps<{
   mapViewRef: {
@@ -125,6 +253,36 @@ const selectedFile = ref<File | null>(null)
 const detecting = ref(false)
 const result = ref<SAM2Result | null>(null)
 const heatmapColormap = ref('hot')
+
+// History
+const allResults = ref<SAM2Result[]>([])
+const loadingHistory = ref(false)
+const activeHistoryTab = ref('heatmap')
+const colormapMap = ref<Record<string, string>>({})
+
+const heatmapResults = computed(() =>
+  allResults.value.filter((r) => r.heatmap_grid && r.heatmap_grid.length > 0),
+)
+const detectionResults = computed(() =>
+  allResults.value.filter((r) => r.detections && r.detections.length > 0),
+)
+
+async function loadHistory() {
+  loadingHistory.value = true
+  try {
+    allResults.value = await sam2Api.list()
+    // Initialise per-item colormap defaults
+    for (const r of allResults.value) {
+      if (!colormapMap.value[r.detection_id]) {
+        colormapMap.value[r.detection_id] = 'hot'
+      }
+    }
+  } catch {
+    // silently ignore – history is non-critical
+  } finally {
+    loadingHistory.value = false
+  }
+}
 
 function onFileChange(event: Event) {
   const input = event.target as HTMLInputElement
@@ -150,6 +308,8 @@ async function runDetection() {
     result.value = await sam2Api.detect(selectedFile.value)
     emit('result', result.value)
     ElMessage.success(`SAM2识别完成，发现 ${result.value.detection_count} 个目标`)
+    // Refresh history to include the new result
+    await loadHistory()
   } catch {
     ElMessage.error('SAM2识别失败，请重试')
   } finally {
@@ -157,9 +317,12 @@ async function runDetection() {
   }
 }
 
-function renderHeatmapToMap() {
-  if (!props.mapViewRef || !result.value) return
-  props.mapViewRef.showSAM2Heatmap(result.value.heatmap_grid, heatmapColormap.value)
+function renderHeatmapToMap(item: SAM2Result) {
+  if (!props.mapViewRef) return
+  const colormap = item.detection_id
+    ? (colormapMap.value[item.detection_id] ?? heatmapColormap.value)
+    : heatmapColormap.value
+  props.mapViewRef.showSAM2Heatmap(item.heatmap_grid, colormap)
   ElMessage.success('热力图已渲染到地图')
 }
 
@@ -169,12 +332,24 @@ function formatSize(bytes: number) {
   return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
 }
 
+function formatDate(dateStr?: string) {
+  if (!dateStr) return '—'
+  return new Date(dateStr).toLocaleString('zh-CN', {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
 function confidenceColor(conf: number) {
   if (conf >= 0.9) return '#4caf50'
   if (conf >= 0.75) return '#8bc34a'
   if (conf >= 0.6) return '#ffc107'
   return '#f44336'
 }
+
+onMounted(loadHistory)
 </script>
 
 <style scoped>
@@ -342,5 +517,126 @@ function confidenceColor(conf: number) {
   display: flex;
   gap: 8px;
   align-items: center;
+}
+
+/* ── History section ── */
+
+.history-divider-label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: #888;
+}
+
+.history-refresh-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.history-count {
+  font-size: 11px;
+  color: #666;
+}
+
+.history-tabs {
+  --el-tabs-header-height: 32px;
+}
+
+.tab-label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+}
+
+.empty-tip {
+  font-size: 12px;
+  color: #555;
+  text-align: center;
+  padding: 14px 0;
+}
+
+.history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 320px;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+.history-item {
+  background: #13213a;
+  border-radius: 6px;
+  padding: 8px 10px;
+}
+
+.history-item--detection {
+  background: #0f1e36;
+  border-left: 3px solid #1565c0;
+}
+
+.hi-info {
+  margin-bottom: 6px;
+}
+
+.hi-filename {
+  display: block;
+  font-size: 12px;
+  font-weight: 500;
+  color: #ccc;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hi-meta {
+  display: block;
+  font-size: 11px;
+  color: #666;
+  margin-top: 2px;
+}
+
+.hi-actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+/* Inline detections inside each history-item--detection */
+.inline-dets {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.inline-det {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+}
+
+.inline-det-label {
+  color: #aaa;
+  width: 76px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.inline-det-conf {
+  color: #888;
+  width: 32px;
+  text-align: right;
+}
+
+.more-tip {
+  font-size: 10px;
+  color: #555;
+  margin-top: 2px;
 }
 </style>

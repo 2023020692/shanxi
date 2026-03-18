@@ -3,7 +3,6 @@ from pathlib import Path
 
 
 class Settings(BaseSettings):
-    database_url: str = "postgresql+asyncpg://shanxi:shanxi123@db:5432/shanxi_gis"
     redis_url: str = "redis://redis:6379/0"
     data_dir: str = "/app/data"
     secret_key: str = "change-me-in-production"
@@ -20,6 +19,18 @@ class Settings(BaseSettings):
     @property
     def reports_dir(self) -> Path:
         return Path(self.data_dir) / "reports"
+
+    @property
+    def wells_dir(self) -> Path:
+        return Path(self.data_dir) / "wells"
+
+    @property
+    def jobs_dir(self) -> Path:
+        return Path(self.data_dir) / "jobs"
+
+    @property
+    def detections_dir(self) -> Path:
+        return Path(self.data_dir) / "detections"
 
     class Config:
         env_file = ".env"

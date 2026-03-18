@@ -1,19 +1,17 @@
 import os
 import tempfile
+import uuid
 
-from fastapi import APIRouter, Depends, UploadFile, File, HTTPException
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import text
+from fastapi import APIRouter, UploadFile, File, HTTPException
 
-from app.database import get_db
-from app.models.well import MineWell
+import app.storage as storage
 from app.services.well_service import parse_wells_excel
 
 router = APIRouter(tags=["wells"])
 
 
 @router.post("/wells/import")
-async def import_wells(file: UploadFile = File(...), db: AsyncSession = Depends(get_db)):
+async def import_wells(file: UploadFile = File(...)):
     if not file.filename or not file.filename.endswith(".xlsx"):
         raise HTTPException(status_code=400, detail="Only .xlsx files accepted")
 
@@ -28,32 +26,22 @@ async def import_wells(file: UploadFile = File(...), db: AsyncSession = Depends(
     finally:
         os.unlink(tmp_path)
 
-    count = 0
+    new_features = []
     for well in wells_data:
-        wkt = f"SRID=4326;POINT({well['lon']} {well['lat']})"
-        db_well = MineWell(
-            name=well["name"],
-            geom=wkt,
-            props={k: v for k, v in well.items() if k not in ("lon", "lat", "name")},
-        )
-        db.add(db_well)
-        count += 1
+        new_features.append({
+            "type": "Feature",
+            "geometry": {"type": "Point", "coordinates": [well["lon"], well["lat"]]},
+            "properties": {
+                "id": str(uuid.uuid4()),
+                "name": well["name"],
+                **{k: v for k, v in well.items() if k not in ("lon", "lat", "name")},
+            },
+        })
 
-    await db.commit()
+    count = storage.append_wells(new_features)
     return {"imported": count}
 
 
 @router.get("/wells")
-async def get_wells(db: AsyncSession = Depends(get_db)):
-    result = await db.execute(
-        text("SELECT id, name, props, ST_X(geom) as lon, ST_Y(geom) as lat FROM mine_wells")
-    )
-    rows = result.fetchall()
-    features = []
-    for row in rows:
-        features.append({
-            "type": "Feature",
-            "geometry": {"type": "Point", "coordinates": [row.lon, row.lat]},
-            "properties": {"id": str(row.id), "name": row.name, **(row.props or {})},
-        })
-    return {"type": "FeatureCollection", "features": features}
+async def get_wells():
+    return storage.load_wells()

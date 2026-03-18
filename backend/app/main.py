@@ -7,16 +7,20 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from app.config import settings
-from app.database import engine, Base
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-    os.makedirs(settings.raw_dir, exist_ok=True)
-    os.makedirs(settings.processed_dir, exist_ok=True)
-    os.makedirs(settings.reports_dir, exist_ok=True)
+    # Ensure all data directories exist on startup
+    for d in [
+        settings.raw_dir,
+        settings.processed_dir,
+        settings.reports_dir,
+        settings.wells_dir,
+        settings.jobs_dir,
+        settings.detections_dir,
+    ]:
+        os.makedirs(d, exist_ok=True)
     yield
 
 
@@ -34,8 +38,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-os.makedirs(str(settings.reports_dir), exist_ok=True)
-app.mount("/files/reports", StaticFiles(directory=str(settings.reports_dir)), name="reports")
+try:
+    os.makedirs(str(settings.reports_dir), exist_ok=True)
+    app.mount("/files/reports", StaticFiles(directory=str(settings.reports_dir)), name="reports")
+except Exception:
+    pass  # Directory will be created on first startup inside Docker
 
 from app.api import rasters, wells, tasks, reports, analytics, fusion, ai, cross_validation, enrichment  # noqa: E402
 

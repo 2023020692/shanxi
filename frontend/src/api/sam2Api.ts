@@ -15,4 +15,14 @@ export const sam2Api = {
     const res = await apiClient.get('/api/ai/info')
     return res.data
   },
+
+  async list(): Promise<SAM2Result[]> {
+    const res = await apiClient.get<SAM2Result[]>('/api/ai/results')
+    return res.data
+  },
+
+  async get(detectionId: string): Promise<SAM2Result> {
+    const res = await apiClient.get<SAM2Result>(`/api/ai/results/${detectionId}`)
+    return res.data
+  },
 }
