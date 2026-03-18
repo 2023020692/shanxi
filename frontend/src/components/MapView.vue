@@ -21,8 +21,11 @@ import VectorSource from 'ol/source/Vector'
 import OSM from 'ol/source/OSM'
 import XYZ from 'ol/source/XYZ'
 import GeoJSON from 'ol/format/GeoJSON'
+import Feature from 'ol/Feature'
+import Point from 'ol/geom/Point'
 import { fromLonLat } from 'ol/proj'
-import { Circle as CircleStyle, Fill, Stroke, Style } from 'ol/style'
+import { Circle as CircleStyle, Fill, Stroke, Style, Text } from 'ol/style'
+import type { HeatgridResult } from '../api/analyticsApi'
 import 'ol/ol.css'
 
 const mapEl = ref<HTMLDivElement | null>(null)
@@ -42,11 +45,18 @@ const wellLayer = new VectorLayer({
   }),
 })
 
+const heatgridSource = new VectorSource()
+const heatgridLayer = new VectorLayer({
+  source: heatgridSource,
+  visible: false,
+})
+
 onMounted(() => {
   map = new Map({
     target: mapEl.value!,
     layers: [
       new TileLayer({ source: new OSM() }),
+      heatgridLayer,
       wellLayer,
     ],
     view: new View({
@@ -92,7 +102,47 @@ async function loadWells() {
   wellSource.addFeatures(features)
 }
 
-defineExpose({ addRasterLayer, loadWells })
+function showHeatgrid(data: HeatgridResult) {
+  heatgridSource.clear()
+  if (!data.features.length) return
+
+  const maxCount = Math.max(...data.features.map((f) => f.properties.count))
+
+  const features = data.features.map((f) => {
+    const { count, lon, lat } = f.properties
+    const ratio = count / maxCount
+    const r = Math.round(255 * Math.min(1, ratio * 2))
+    const g = Math.round(255 * Math.max(0, 1 - ratio * 2))
+    const radius = Math.max(8, Math.round(ratio * 28))
+
+    const feat = new Feature({
+      geometry: new Point(fromLonLat([lon, lat])),
+      count,
+    })
+    feat.setStyle(
+      new Style({
+        image: new CircleStyle({
+          radius,
+          fill: new Fill({ color: `rgba(${r}, ${g}, 50, 0.65)` }),
+          stroke: new Stroke({ color: 'rgba(255,255,255,0.4)', width: 1 }),
+        }),
+        text: count > 1
+          ? new Text({
+              text: String(count),
+              fill: new Fill({ color: '#fff' }),
+              font: 'bold 10px sans-serif',
+            })
+          : undefined,
+      }),
+    )
+    return feat
+  })
+
+  heatgridSource.addFeatures(features)
+  heatgridLayer.setVisible(true)
+}
+
+defineExpose({ addRasterLayer, loadWells, showHeatgrid })
 </script>
 
 <style scoped>

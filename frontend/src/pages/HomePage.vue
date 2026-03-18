@@ -11,6 +11,12 @@
         <el-tab-pane label="井点" name="wells">
           <WellPanel :map-view-ref="mapViewRef" />
         </el-tab-pane>
+        <el-tab-pane label="分析" name="analytics">
+          <AnalyticsPanel @show-heatgrid="onShowHeatgrid" />
+        </el-tab-pane>
+        <el-tab-pane label="融合" name="fusion">
+          <FusionPanel />
+        </el-tab-pane>
         <el-tab-pane label="上传" name="upload">
           <UploadPanel />
         </el-tab-pane>
@@ -32,9 +38,16 @@ import LayerPanel from '../components/LayerPanel.vue'
 import WellPanel from '../components/WellPanel.vue'
 import UploadPanel from '../components/UploadPanel.vue'
 import ReportPanel from '../components/ReportPanel.vue'
+import AnalyticsPanel from '../components/AnalyticsPanel.vue'
+import FusionPanel from '../components/FusionPanel.vue'
+import type { HeatgridResult } from '../api/analyticsApi'
 
 const activeTab = ref('layers')
 const mapViewRef = ref<InstanceType<typeof MapView> | null>(null)
+
+function onShowHeatgrid(data: HeatgridResult) {
+  mapViewRef.value?.showHeatgrid(data)
+}
 </script>
 
 <style scoped>
