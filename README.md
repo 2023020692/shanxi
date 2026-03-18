@@ -11,24 +11,41 @@
 
 ## 环境要求
 
-- **Docker Desktop for Windows**（推荐最新版，已启用 WSL2 后端）
+- **Docker Desktop**（推荐最新版；Windows 用户请启用 WSL2 后端，macOS/Linux 用户直接安装即可）
 - Git
 
-## 快速启动
+## 快速启动（本地部署）
 
 ```bash
 # 1. 克隆仓库
 git clone <your-repo-url>
 cd shanxi
 
-# 2. 复制环境变量文件（可按需修改）
+# 2. 复制环境变量文件
 cp .env.example .env
-
-# 3. 一键启动所有服务
-docker compose up -d
 ```
 
-等待约 2-3 分钟，直到所有容器健康运行。
+用文本编辑器打开 `.env`，按需修改以下关键配置：
+
+| 变量 | 说明 | 默认值 |
+|------|------|--------|
+| `POSTGRES_PASSWORD` | 数据库密码 | `shanxi123` |
+| `SECRET_KEY` | JWT 签名密钥（生产环境请务必更换） | `change-me-in-production` |
+| `VITE_TIANDITU_TOKEN` | 天地图 API Token（[申请地址](https://uumaps.tianditu.gov.cn/)，留空时前端代码自动使用内置演示 token） | 空 |
+| `VITE_TITILER_URL` | TiTiler 服务地址 | `http://localhost:8080` |
+
+```bash
+# 3. 一键构建并启动所有服务
+docker compose up -d --build
+```
+
+> 首次启动需要拉取镜像和编译前端，约需 **3–5 分钟**。  
+> 可通过 `docker compose logs -f` 实时查看进度。
+
+```bash
+# 查看各服务运行状态（全部 healthy 即就绪）
+docker compose ps
+```
 
 ## 访问地址
 
@@ -40,6 +57,16 @@ docker compose up -d
 | TiTiler 服务 | http://localhost:8080 |
 | Redis | localhost:6379 |
 | PostgreSQL | localhost:5432 |
+
+## 停止 / 清理
+
+```bash
+# 停止所有容器（保留数据卷）
+docker compose down
+
+# 停止并删除所有数据（包括数据库）
+docker compose down -v
+```
 
 ## 端到端演示流程
 
