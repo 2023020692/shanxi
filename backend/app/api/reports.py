@@ -21,12 +21,6 @@ class ReportRequest(BaseModel):
     raster_id: Optional[uuid.UUID] = None
 
 
-@router.get("/reports", response_model=list[ReportOut])
-async def list_reports(db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(Report).order_by(Report.created_at.desc()))
-    return result.scalars().all()
-
-
 @router.post("/reports/generate", response_model=ReportOut)
 async def generate_report(req: ReportRequest, db: AsyncSession = Depends(get_db)):
     if req.raster_id:

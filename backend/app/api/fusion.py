@@ -43,10 +43,6 @@ async def create_fusion_job(req: FusionJobRequest, db: AsyncSession = Depends(ge
     db.add(job)
     await db.commit()
     await db.refresh(job)
-
-    from app.tasks.fusion_tasks import task_run_fusion_job
-    task_run_fusion_job.delay(job_id)
-
     return FusionJobOut(
         id=job.id,
         type=job.type,

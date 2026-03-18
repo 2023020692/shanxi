@@ -37,36 +37,6 @@
         </el-button>
       </div>
     </div>
-
-    <el-divider />
-
-    <div class="report-list-header">
-      <span class="section-title">历史报告</span>
-      <el-button size="small" @click="fetchReports" :loading="loadingReports">刷新</el-button>
-    </div>
-
-    <el-empty v-if="reports.length === 0 && !loadingReports" description="暂无历史报告" />
-
-    <div v-for="r in reports" :key="r.id" class="report-item">
-      <div class="report-item-header">
-        <span class="report-title-text">{{ r.title }}</span>
-        <el-tag v-if="r.file_path" type="success" size="small">已完成</el-tag>
-        <el-tag v-else type="warning" size="small">生成中</el-tag>
-      </div>
-      <div class="report-item-time">{{ formatTime(r.created_at) }}</div>
-      <el-button
-        v-if="r.file_path"
-        size="small"
-        type="primary"
-        plain
-        style="margin-top: 4px"
-        :href="reportApi.downloadUrl(r.id)"
-        tag="a"
-        target="_blank"
-      >
-        下载 PDF
-      </el-button>
-    </div>
   </div>
 </template>
 
@@ -78,11 +48,9 @@ import { reportApi } from '../api/reportApi'
 import { apiClient } from '../api'
 
 const rasters = ref<RasterAsset[]>([])
-const reports = ref<Report[]>([])
 const reportTitle = ref('山西省 WebGIS 数据分析报告')
 const selectedRasterId = ref<string | undefined>()
 const generating = ref(false)
-const loadingReports = ref(false)
 const currentReport = ref<Report | null>(null)
 const downloadUrl = ref('')
 const polling = ref(false)
@@ -91,21 +59,11 @@ async function fetchRasters() {
   rasters.value = await rasterApi.list()
 }
 
-async function fetchReports() {
-  loadingReports.value = true
-  try {
-    reports.value = await reportApi.list()
-  } finally {
-    loadingReports.value = false
-  }
-}
-
 async function generateReport() {
   generating.value = true
   try {
     currentReport.value = await reportApi.generate(reportTitle.value, selectedRasterId.value)
     downloadUrl.value = reportApi.downloadUrl(currentReport.value.id)
-    reports.value.unshift(currentReport.value)
     if (!currentReport.value.file_path) {
       setTimeout(pollStatus, 3000)
     }
@@ -123,8 +81,6 @@ async function pollStatus() {
     })
     if (res.status === 200) {
       currentReport.value.file_path = 'ready'
-      const idx = reports.value.findIndex((r) => r.id === currentReport.value!.id)
-      if (idx !== -1) reports.value[idx] = { ...reports.value[idx], file_path: 'ready' }
     } else {
       setTimeout(pollStatus, 3000)
     }
@@ -133,18 +89,7 @@ async function pollStatus() {
   }
 }
 
-function formatTime(timeStr: string) {
-  try {
-    return new Date(timeStr).toLocaleString('zh-CN')
-  } catch {
-    return timeStr
-  }
-}
-
-onMounted(() => {
-  fetchRasters()
-  fetchReports()
-})
+onMounted(fetchRasters)
 </script>
 
 <style scoped>
@@ -155,47 +100,9 @@ onMounted(() => {
 .section-title {
   font-weight: bold;
   margin-bottom: 12px;
-  font-size: 13px;
-  display: block;
 }
 
 .report-result {
   margin-top: 8px;
-}
-
-.report-list-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 8px;
-}
-
-.report-item {
-  background: #f8f9fa;
-  border-radius: 6px;
-  padding: 8px 10px;
-  margin-bottom: 6px;
-  border: 1px solid #e0e0e0;
-}
-
-.report-item-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 4px;
-}
-
-.report-title-text {
-  font-size: 13px;
-  font-weight: 500;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 200px;
-}
-
-.report-item-time {
-  font-size: 10px;
-  color: #aaa;
 }
 </style>
