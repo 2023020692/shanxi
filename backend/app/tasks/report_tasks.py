@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Optional
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -15,7 +16,13 @@ def get_sync_session():
 
 
 @celery_app.task(bind=True, name="tasks.generate_report")
-def task_generate_report(self, report_id: str, title: str, raster_id: str = None):
+def task_generate_report(
+    self,
+    report_id: str,
+    title: str,
+    raster_id: Optional[str] = None,
+    extra_context: Optional[dict] = None,
+):
     from app.models.report import Report
     from app.models.raster import RasterAsset
     from app.services.pdf_service import generate_pdf_report
@@ -33,6 +40,15 @@ def task_generate_report(self, report_id: str, title: str, raster_id: str = None
                     "分辨率": raster.resolution or "N/A",
                     "坐标系": raster.crs or "N/A",
                 }
+
+        # Merge extra context (enrichment results, SAM2 results, AI analysis text)
+        if extra_context:
+            if extra_context.get("enrichment_result_ids"):
+                stats["富集指数结果"] = ", ".join(extra_context["enrichment_result_ids"])
+            if extra_context.get("sam2_detection_id"):
+                stats["SAM2检测ID"] = extra_context["sam2_detection_id"]
+            if extra_context.get("ai_analysis_text"):
+                stats["AI分析结论"] = extra_context["ai_analysis_text"]
 
         output_path = Path(settings.reports_dir) / f"{report_id}.pdf"
         generate_pdf_report(str(output_path), title, stats)

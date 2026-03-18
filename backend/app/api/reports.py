@@ -4,7 +4,7 @@ import os
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, List
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
@@ -17,8 +17,11 @@ router = APIRouter(tags=["reports"])
 
 
 class ReportRequest(BaseModel):
-    title: Optional[str] = "山西省 WebGIS 数据分析报告"
+    title: Optional[str] = "煤矿资源分析系统数据分析报告"
     raster_id: Optional[uuid.UUID] = None
+    enrichment_result_ids: Optional[List[str]] = None
+    sam2_detection_id: Optional[str] = None
+    ai_analysis_text: Optional[str] = None
 
 
 @router.get("/reports", response_model=list[ReportOut])
@@ -39,7 +42,17 @@ async def generate_report(req: ReportRequest, db: AsyncSession = Depends(get_db)
     db.add(report)
     await db.commit()
 
-    task_generate_report.delay(str(report_id), req.title, str(req.raster_id) if req.raster_id else None)
+    extra_context = {
+        "enrichment_result_ids": req.enrichment_result_ids or [],
+        "sam2_detection_id": req.sam2_detection_id,
+        "ai_analysis_text": req.ai_analysis_text,
+    }
+    task_generate_report.delay(
+        str(report_id),
+        req.title,
+        str(req.raster_id) if req.raster_id else None,
+        extra_context,
+    )
     await db.refresh(report)
     return report
 
