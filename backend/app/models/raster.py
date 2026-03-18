@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 import enum
 
 from sqlalchemy import Column, String, Integer, Float, DateTime, Enum, JSON
@@ -27,5 +27,5 @@ class RasterAsset(Base):
     band_count = Column(Integer, nullable=True)
     resolution = Column(Float, nullable=True)
     status = Column(Enum(RasterStatus), default=RasterStatus.pending, nullable=False)
-    created_at = Column(DateTime, default=lambda: datetime.utcnow())
-    updated_at = Column(DateTime, default=lambda: datetime.utcnow(), onupdate=lambda: datetime.utcnow())
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))

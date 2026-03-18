@@ -50,4 +50,4 @@ app.include_router(ai.router, prefix="/api")
 
 @app.get("/healthz")
 async def healthz():
-    return {"status": "ok", "timestamp": datetime.datetime.utcnow().isoformat()}
+    return {"status": "ok", "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat()}

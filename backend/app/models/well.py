@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import Column, String, DateTime, JSON
 from sqlalchemy.dialects.postgresql import UUID
@@ -15,4 +15,4 @@ class MineWell(Base):
     name = Column(String, nullable=False)
     geom = Column(Geometry("POINT", srid=4326), nullable=False)
     props = Column(JSON, default={})
-    created_at = Column(DateTime, default=lambda: datetime.utcnow())
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))

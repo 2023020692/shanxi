@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import Column, String, DateTime, ForeignKey
 from sqlalchemy.dialects.postgresql import UUID
@@ -14,4 +14,4 @@ class Report(Base):
     title = Column(String, nullable=False)
     raster_id = Column(UUID(as_uuid=True), ForeignKey("raster_assets.id", ondelete="SET NULL"), nullable=True)
     file_path = Column(String, nullable=True)
-    created_at = Column(DateTime, default=lambda: datetime.utcnow())
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))

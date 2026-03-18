@@ -7,6 +7,17 @@ def parse_wells_excel(file_path: str) -> List[Dict[str, Any]]:
 
     df = pd.read_excel(file_path, engine="openpyxl")
     df.columns = [str(c).strip().lower() for c in df.columns]
+    # Handle duplicate column names after normalization
+    seen = {}
+    new_cols = []
+    for col in df.columns:
+        if col in seen:
+            seen[col] += 1
+            new_cols.append(f"{col}_{seen[col]}")
+        else:
+            seen[col] = 0
+            new_cols.append(col)
+    df.columns = new_cols
 
     col_map = {}
     for col in df.columns:
