@@ -20,6 +20,7 @@ async def lifespan(app: FastAPI):
         settings.jobs_dir,
         settings.detections_dir,
         settings.analysis_dir,
+        settings.satellite2_dir,
     ]:
         os.makedirs(d, exist_ok=True)
     yield
@@ -48,6 +49,18 @@ except Exception:
 try:
     os.makedirs(str(settings.analysis_dir), exist_ok=True)
     app.mount("/files/analysis", StaticFiles(directory=str(settings.analysis_dir)), name="analysis")
+except Exception:
+    pass  # Directory will be created on first startup inside Docker
+
+try:
+    os.makedirs(str(settings.raw_dir), exist_ok=True)
+    app.mount("/files/raw", StaticFiles(directory=str(settings.raw_dir)), name="raw")
+except Exception:
+    pass  # Directory will be created on first startup inside Docker
+
+try:
+    os.makedirs(str(settings.satellite2_dir), exist_ok=True)
+    app.mount("/files/satellite2", StaticFiles(directory=str(settings.satellite2_dir)), name="satellite2")
 except Exception:
     pass  # Directory will be created on first startup inside Docker
 

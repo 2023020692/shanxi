@@ -35,6 +35,7 @@ class EnrichmentResultItem(BaseModel):
     high_value_ratio: Optional[float] = None
     coverage_area_km2: Optional[float] = None
     colormap: str = "hot"
+    tif_urls: List[str] = []
     created_at: str
 
 
@@ -66,6 +67,15 @@ async def analyze_enrichment(req: EnrichmentRequest):
     coverage_area = round(random.uniform(80, 6000), 2)
     method_name = ENRICHMENT_METHODS.get(req.method, req.method)
 
+    # Collect TIF file URLs from the selected rasters
+    tif_urls: List[str] = []
+    for raster_id in req.raster_ids:
+        meta = storage.load_raster_meta(raster_id)
+        if meta and meta.get("original_path"):
+            from pathlib import Path
+            tif_filename = Path(meta["original_path"]).name
+            tif_urls.append(f"/files/raw/{tif_filename}")
+
     job = {
         "id": job_id,
         "type": "enrichment",
@@ -79,6 +89,7 @@ async def analyze_enrichment(req: EnrichmentRequest):
             "high_value_ratio": high_value_ratio,
             "coverage_area_km2": coverage_area,
             "colormap": "hot",
+            "tif_urls": tif_urls,
             "grid": _generate_enrichment_grid(),
         },
         "created_at": now,
@@ -97,6 +108,7 @@ async def analyze_enrichment(req: EnrichmentRequest):
         high_value_ratio=high_value_ratio,
         coverage_area_km2=coverage_area,
         colormap="hot",
+        tif_urls=tif_urls,
         created_at=now,
     )
 
@@ -120,6 +132,7 @@ async def list_enrichment_results():
                 high_value_ratio=r.get("high_value_ratio"),
                 coverage_area_km2=r.get("coverage_area_km2"),
                 colormap=r.get("colormap", "hot"),
+                tif_urls=r.get("tif_urls", []),
                 created_at=j["created_at"],
             )
         )
