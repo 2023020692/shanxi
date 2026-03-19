@@ -9,6 +9,7 @@ export default defineConfig({
     proxy: {
       '/api': 'http://backend:8000',
       '/healthz': 'http://backend:8000',
+      '/files': 'http://backend:8000',
     }
   }
 })

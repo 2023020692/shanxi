@@ -12,22 +12,27 @@
       </el-form-item>
 
       <el-form-item label="选择数据图层（多选）">
-        <el-select
-          v-model="form.selectedRasterIds"
-          multiple
-          collapse-tags
-          placeholder="选择TIF数据层"
-          style="width:100%"
-          :loading="loadingRasters"
-        >
-          <el-option
-            v-for="r in readyRasters"
-            :key="r.id"
-            :label="r.filename"
-            :value="r.id"
-          />
-        </el-select>
-        <div v-if="readyRasters.length === 0" class="hint">暂无TIF数据，请先在数据图层模块上传TIF文件</div>
+        <div style="display:flex;gap:6px;width:100%">
+          <el-select
+            v-model="form.selectedRasterIds"
+            multiple
+            collapse-tags
+            placeholder="选择TIF数据层"
+            style="flex:1"
+            :loading="loadingRasters"
+          >
+            <el-option
+              v-for="r in readyRasters"
+              :key="r.id"
+              :label="r.filename"
+              :value="r.id"
+            />
+          </el-select>
+          <el-button size="small" :loading="loadingRasters" @click="fetchRasters" title="刷新数据图层列表">
+            刷新
+          </el-button>
+        </div>
+        <div v-if="readyRasters.length === 0 && !loadingRasters" class="hint">暂无TIF数据，请先在数据图层模块上传TIF文件</div>
       </el-form-item>
 
       <el-button
