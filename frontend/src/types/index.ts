@@ -61,6 +61,7 @@ export interface EnrichmentResultItem {
   high_value_ratio?: number
   coverage_area_km2?: number
   colormap: string
+  tif_urls: string[]
   created_at: string
 }
 
@@ -91,6 +92,7 @@ export interface SatelliteImage {
   filename: string
   file_size_bytes: number
   image_url: string
+  satellite2_url?: string
   status: string
   message: string
   created_at: string
@@ -101,6 +103,7 @@ export interface SAM2Raster {
   filename: string
   file_size_bytes: number
   heatmap_grid: Array<{ lon: number; lat: number; intensity: number }>
+  tif_url?: string
   status: string
   message: string
   created_at: string

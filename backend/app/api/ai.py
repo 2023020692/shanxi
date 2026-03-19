@@ -51,6 +51,7 @@ class SatelliteImageOut(BaseModel):
     filename: str
     file_size_bytes: int
     image_url: str
+    satellite2_url: Optional[str] = None
     status: str
     message: str
     created_at: str
@@ -61,6 +62,7 @@ class SAM2RasterOut(BaseModel):
     filename: str
     file_size_bytes: int
     heatmap_grid: List[dict]
+    tif_url: Optional[str] = None
     status: str
     message: str
     created_at: str
@@ -212,6 +214,14 @@ async def analyze_image(file: UploadFile = File(...)):
     sleep_seconds = random.uniform(3.0, 6.0)
     await asyncio.sleep(sleep_seconds)
 
+    # Copy the analyzed image to the satellite2 folder as the processed result
+    satellite2_dir = Path(settings.satellite2_dir)
+    satellite2_dir.mkdir(parents=True, exist_ok=True)
+    sat2_filename = f"{image_id}_{safe_name}"
+    sat2_path = satellite2_dir / sat2_filename
+    shutil.copy2(dest_path, sat2_path)
+    satellite2_url = f"/files/satellite2/{sat2_filename}"
+
     now = datetime.now(timezone.utc).isoformat()
     record = {
         "image_id": image_id,
@@ -219,6 +229,7 @@ async def analyze_image(file: UploadFile = File(...)):
         "dest_filename": dest_filename,
         "file_size_bytes": file_size,
         "image_url": f"/files/analysis/{dest_filename}",
+        "satellite2_url": satellite2_url,
         "status": "completed",
         "message": "分析成功，卫星图像已添加到分析列表",
         "created_at": now,
@@ -230,6 +241,7 @@ async def analyze_image(file: UploadFile = File(...)):
         filename=safe_name,
         file_size_bytes=file_size,
         image_url=f"/files/analysis/{dest_filename}",
+        satellite2_url=satellite2_url,
         status="completed",
         message="分析成功，卫星图像已添加到分析列表",
         created_at=now,
@@ -246,6 +258,7 @@ async def list_satellite_images():
             filename=item.get("filename", ""),
             file_size_bytes=item.get("file_size_bytes", 0),
             image_url=item.get("image_url", ""),
+            satellite2_url=item.get("satellite2_url"),
             status=item.get("status", "completed"),
             message=item.get("message", ""),
             created_at=item.get("created_at", ""),
@@ -290,12 +303,14 @@ async def analyze_tif(file: UploadFile = File(...)):
 
     now = datetime.now(timezone.utc).isoformat()
     heatmap_grid = _simulate_heatmap_grid()
+    tif_url = f"/files/raw/{raster_id}_{safe_tif_name}"
 
     record = {
         "raster_id": raster_id,
         "filename": safe_tif_name,
         "file_size_bytes": file_size,
         "original_path": str(dest_path),
+        "tif_url": tif_url,
         "heatmap_grid": heatmap_grid,
         "status": "completed",
         "message": "TIF图像SAM2分析完成，热力图数据已生成",
@@ -308,6 +323,7 @@ async def analyze_tif(file: UploadFile = File(...)):
         filename=safe_tif_name,
         file_size_bytes=file_size,
         heatmap_grid=heatmap_grid,
+        tif_url=tif_url,
         status="completed",
         message="TIF图像SAM2分析完成，热力图数据已生成",
         created_at=now,
@@ -324,6 +340,7 @@ async def list_sam2_rasters():
             filename=item.get("filename", ""),
             file_size_bytes=item.get("file_size_bytes", 0),
             heatmap_grid=item.get("heatmap_grid", []),
+            tif_url=item.get("tif_url"),
             status=item.get("status", "completed"),
             message=item.get("message", ""),
             created_at=item.get("created_at", ""),

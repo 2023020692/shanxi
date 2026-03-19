@@ -106,6 +106,8 @@ import { enrichmentApi } from '../api/enrichmentApi'
 const props = defineProps<{
   mapViewRef: {
     showEnrichmentLayer: (grid: EnrichmentGridPoint[], colormap: string, name: string) => void
+    renderTifLayer: (tifUrl: string, colormap: string, title: string) => Promise<void>
+    clearTifLayer: () => void
   } | null
 }>()
 
@@ -171,9 +173,22 @@ async function runAnalysis() {
 
 async function renderToMap(item: EnrichmentResultItem) {
   if (!props.mapViewRef) return
+  const colormap = selectedColormaps.value[item.id] || item.colormap || 'hot'
+
+  // Prefer rendering the actual TIF file via geotiff.js + Deck.gl WebGL
+  if (item.tif_urls && item.tif_urls.length > 0) {
+    try {
+      await props.mapViewRef.renderTifLayer(item.tif_urls[0], colormap, item.name + ' - 富集指数')
+      ElMessage.success(`"${item.name}" TIF已通过WebGL渲染到地图`)
+      return
+    } catch {
+      // Fall through to grid-based rendering
+    }
+  }
+
+  // Fall back to grid-point rendering
   try {
     const data = await enrichmentApi.getGrid(item.id)
-    const colormap = selectedColormaps.value[item.id] || item.colormap || 'hot'
     props.mapViewRef.showEnrichmentLayer(data.grid || [], colormap, item.name)
     ElMessage.success(`"${item.name}" 已渲染到地图`)
   } catch {
