@@ -85,3 +85,23 @@ export interface SAM2Result {
   message: string
   created_at?: string
 }
+
+export interface SatelliteImage {
+  image_id: string
+  filename: string
+  file_size_bytes: number
+  image_url: string
+  status: string
+  message: string
+  created_at: string
+}
+
+export interface SAM2Raster {
+  raster_id: string
+  filename: string
+  file_size_bytes: number
+  heatmap_grid: Array<{ lon: number; lat: number; intensity: number }>
+  status: string
+  message: string
+  created_at: string
+}

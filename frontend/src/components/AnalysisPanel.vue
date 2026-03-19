@@ -39,11 +39,23 @@
           <div v-if="enrichmentResults.length === 0" class="hint">暂无富集指数结果，请先在「富集指数」模块运行分析</div>
         </el-form-item>
 
-        <el-form-item label="SAM2 检测 ID（可选）">
-          <el-input v-model="sam2DetectionId" placeholder="SAM2检测ID（从SAM2分析模块获取）" />
-          <div v-if="latestSAM2Id" class="hint-link" @click="sam2DetectionId = latestSAM2Id">
-            使用最近一次: {{ latestSAM2Id.substring(0, 16) }}...
-          </div>
+        <el-form-item label="选择SAM2栅格数据（可选，多选）">
+          <el-select
+            v-model="selectedSAM2RasterIds"
+            multiple
+            collapse-tags
+            placeholder="选择SAM2栅格结果"
+            style="width:100%"
+            :loading="loadingSAM2Rasters"
+          >
+            <el-option
+              v-for="item in sam2Rasters"
+              :key="item.raster_id"
+              :label="item.filename"
+              :value="item.raster_id"
+            />
+          </el-select>
+          <div v-if="sam2Rasters.length === 0" class="hint">暂无SAM2栅格结果，请先在「SAM2分析」模块上传TIF进行分析</div>
         </el-form-item>
 
         <el-button
@@ -160,15 +172,15 @@
 import { ref, onMounted } from 'vue'
 import { DataAnalysis, MagicStick } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
-import type { EnrichmentResultItem, Report, EnrichmentGridPoint } from '../types'
+import type { EnrichmentResultItem, Report, EnrichmentGridPoint, SAM2Raster } from '../types'
 import { enrichmentApi } from '../api/enrichmentApi'
 import { reportApi } from '../api/reportApi'
+import { sam2Api } from '../api/sam2Api'
 
 const props = defineProps<{
   mapViewRef: {
     showEnrichmentLayer: (grid: EnrichmentGridPoint[], colormap: string, name: string) => void
   } | null
-  latestSAM2Id?: string
 }>()
 
 // Step state
@@ -177,10 +189,11 @@ const currentStep = ref(0)
 // Step 0
 const reportTitle = ref('煤矿资源综合分析报告')
 const selectedEnrichmentIds = ref<string[]>([])
-const sam2DetectionId = ref('')
-const latestSAM2Id = ref(props.latestSAM2Id || '')
+const selectedSAM2RasterIds = ref<string[]>([])
 const enrichmentResults = ref<EnrichmentResultItem[]>([])
+const sam2Rasters = ref<SAM2Raster[]>([])
 const loadingEnrichment = ref(false)
+const loadingSAM2Rasters = ref(false)
 const overlayRunning = ref(false)
 
 // Step 1
@@ -205,6 +218,15 @@ async function loadEnrichmentResults() {
     enrichmentResults.value = await enrichmentApi.list()
   } finally {
     loadingEnrichment.value = false
+  }
+}
+
+async function loadSAM2Rasters() {
+  loadingSAM2Rasters.value = true
+  try {
+    sam2Rasters.value = await sam2Api.listSAM2Rasters()
+  } finally {
+    loadingSAM2Rasters.value = false
   }
 }
 
@@ -268,7 +290,7 @@ async function runAIAnalysis() {
       `1. 煤矿富集指数分析：本次分析共纳入 ${selected.length} 组富集指数识别结果，` +
       `平均富集指数为 ${(avgIdx * 100).toFixed(1)}%，高值区域占比 ${(avgHVR * 100).toFixed(1)}%，` +
       `总覆盖面积约 ${totalArea.toFixed(0)} km²。\n\n` +
-      `2. SAM2 目标识别：${sam2DetectionId.value ? `已整合SAM2检测结果（ID: ${sam2DetectionId.value.substring(0,8)}…），` : '未关联SAM2检测结果，'}` +
+      `2. SAM2 栅格数据：${selectedSAM2RasterIds.value.length > 0 ? `已整合 ${selectedSAM2RasterIds.value.length} 组SAM2栅格分析结果，` : '未关联SAM2栅格数据，'}` +
       `目标识别与富集指数空间相关性较高，建议重点关注高富集指数与SAM2识别热点叠加区域。\n\n` +
       `3. 空间叠加结论：叠加分析显示，研究区域内高富集指数区域与SAM2识别热点区域存在显著空间一致性，` +
       `叠加覆盖面积约为 ${overlayResult.value?.overlap_area ?? 0} km²，` +
@@ -287,7 +309,7 @@ async function generateReport() {
     const report = await reportApi.generate({
       title: reportTitle.value,
       enrichment_result_ids: selectedEnrichmentIds.value,
-      sam2_detection_id: sam2DetectionId.value || null,
+      sam2_detection_id: selectedSAM2RasterIds.value.join(',') || null,
       ai_analysis_text: aiAnalysisText.value || null,
     })
     reports.value.unshift(report)
@@ -316,7 +338,7 @@ function formatDate(dateStr: string) {
 }
 
 onMounted(async () => {
-  await Promise.all([loadEnrichmentResults(), fetchReports()])
+  await Promise.all([loadEnrichmentResults(), loadSAM2Rasters(), fetchReports()])
 })
 </script>
 

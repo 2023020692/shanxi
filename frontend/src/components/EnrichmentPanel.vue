@@ -27,7 +27,7 @@
             :value="r.id"
           />
         </el-select>
-        <div v-if="readyRasters.length === 0" class="hint">暂无就绪TIF数据，请先在数据图层模块上传并预处理</div>
+        <div v-if="readyRasters.length === 0" class="hint">暂无TIF数据，请先在数据图层模块上传TIF文件</div>
       </el-form-item>
 
       <el-button

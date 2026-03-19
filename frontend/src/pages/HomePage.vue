@@ -18,10 +18,10 @@
           <EnrichmentPanel :map-view-ref="mapViewRef" />
         </el-tab-pane>
         <el-tab-pane label="SAM2分析" name="sam2">
-          <SAM2Panel :map-view-ref="mapViewRef" @result="onSAM2Result" />
+          <SAM2Panel :map-view-ref="mapViewRef" />
         </el-tab-pane>
         <el-tab-pane label="综合分析" name="analysis">
-          <AnalysisPanel :map-view-ref="mapViewRef" :latest-s-a-m2-id="latestSAM2Id" />
+          <AnalysisPanel :map-view-ref="mapViewRef" />
         </el-tab-pane>
       </el-tabs>
     </el-aside>
@@ -39,17 +39,9 @@ import DataLayerPanel from '../components/DataLayerPanel.vue'
 import EnrichmentPanel from '../components/EnrichmentPanel.vue'
 import SAM2Panel from '../components/SAM2Panel.vue'
 import AnalysisPanel from '../components/AnalysisPanel.vue'
-import type { SAM2Result } from '../types'
 
 const activeTab = ref('datalayer')
 const mapViewRef = ref<InstanceType<typeof MapView> | null>(null)
-const latestSAM2Id = ref('')
-
-function onSAM2Result(result: SAM2Result) {
-  if (result.detection_id) {
-    latestSAM2Id.value = result.detection_id
-  }
-}
 </script>
 
 <style scoped>
