@@ -10,9 +10,10 @@ All persistent data is stored as JSON files on disk, organised by type:
 """
 
 import json
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set
 
 from app.config import settings
 
@@ -69,16 +70,50 @@ def load_raster_meta(raster_id: str) -> Optional[Dict[str, Any]]:
     return None
 
 
+def _auto_register_tif(tif_path: Path) -> Dict[str, Any]:
+    """Create and persist a meta.json for a TIF file that has no sidecar yet."""
+    raster_id = str(uuid.uuid4())
+    now = _now_iso()
+    meta: Dict[str, Any] = {
+        "id": raster_id,
+        "filename": tif_path.name,
+        "original_path": str(tif_path),
+        "cog_path": str(tif_path),
+        "crs": None,
+        "bbox": None,
+        "band_count": None,
+        "resolution": None,
+        "status": "ready",
+        "created_at": now,
+        "updated_at": now,
+    }
+    meta_path = tif_path.parent / f"{raster_id}_{tif_path.name}.meta.json"
+    _write_json(meta_path, meta)
+    return meta
+
+
 def list_rasters() -> List[Dict[str, Any]]:
     raw_dir = Path(settings.raw_dir)
     if not raw_dir.exists():
         return []
-    items = []
-    for p in sorted(raw_dir.glob("*.meta.json"), key=_mtime, reverse=True):
+
+    # Collect all registered TIF paths from existing meta files
+    registered_paths: Set[str] = set()
+    meta_items: List[Any] = []
+    for p in raw_dir.glob("*.meta.json"):
         data = _read_json(p)
         if data:
-            items.append(data)
-    return items
+            meta_items.append((p, data))
+            if data.get("original_path"):
+                registered_paths.add(data["original_path"])
+
+    # Auto-register any TIF files that have no meta.json sidecar
+    for tif in (*raw_dir.glob("*.tif"), *raw_dir.glob("*.tiff")):
+        if str(tif) not in registered_paths:
+            data = _auto_register_tif(tif)
+            meta_items.append((raw_dir / f"{data['id']}_{tif.name}.meta.json", data))
+
+    return [d for _, d in sorted(meta_items, key=lambda x: _mtime(x[0]), reverse=True)]
 
 
 def update_raster_meta(raster_id: str, updates: Dict[str, Any]) -> Optional[Dict[str, Any]]:

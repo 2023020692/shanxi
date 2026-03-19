@@ -204,10 +204,11 @@ function statusLabel(status: string) {
 
 function loadToMap(raster: RasterAsset) {
   if (!raster.cog_path || !props.mapViewRef) return
-  const cogFilename = raster.cog_path.split('/').pop()
   const colormap = selectedColormap.value[raster.id] || 'viridis'
   const titilerBase = import.meta.env.VITE_TITILER_URL || 'http://localhost:8080'
-  const url = `${titilerBase}/cog/tiles/{z}/{x}/{y}.png?url=/data/processed/${cogFilename}&colormap_name=${colormap}`
+  // Convert backend path (/app/data/...) to titiler-mounted path (/data/...)
+  const titilerPath = raster.cog_path.replace(/^\/app\/data\//, '/data/')
+  const url = `${titilerBase}/cog/tiles/{z}/{x}/{y}.png?url=${titilerPath}&colormap_name=${colormap}`
   props.mapViewRef.addRasterLayer(url, raster.filename)
 }
 
