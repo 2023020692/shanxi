@@ -19,6 +19,7 @@ async def lifespan(app: FastAPI):
         settings.wells_dir,
         settings.jobs_dir,
         settings.detections_dir,
+        settings.analysis_dir,
     ]:
         os.makedirs(d, exist_ok=True)
     yield
@@ -41,6 +42,12 @@ app.add_middleware(
 try:
     os.makedirs(str(settings.reports_dir), exist_ok=True)
     app.mount("/files/reports", StaticFiles(directory=str(settings.reports_dir)), name="reports")
+except Exception:
+    pass  # Directory will be created on first startup inside Docker
+
+try:
+    os.makedirs(str(settings.analysis_dir), exist_ok=True)
+    app.mount("/files/analysis", StaticFiles(directory=str(settings.analysis_dir)), name="analysis")
 except Exception:
     pass  # Directory will be created on first startup inside Docker
 

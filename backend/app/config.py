@@ -32,6 +32,10 @@ class Settings(BaseSettings):
     def detections_dir(self) -> Path:
         return Path(self.data_dir) / "detections"
 
+    @property
+    def analysis_dir(self) -> Path:
+        return Path(self.data_dir) / "analysis"
+
     class Config:
         env_file = ".env"
         extra = "ignore"

@@ -258,3 +258,59 @@ def list_detections() -> List[Dict[str, Any]]:
         if data:
             items.append(data)
     return items
+
+
+# ---------------------------------------------------------------------------
+# Satellite Analysis Images (PNG/JPG uploaded via SAM2 module)
+# ---------------------------------------------------------------------------
+
+def _satellite_image_path(image_id: str) -> Path:
+    return Path(settings.analysis_dir) / f"{image_id}.meta.json"
+
+
+def save_satellite_image(data: Dict[str, Any]) -> None:
+    _write_json(_satellite_image_path(data["image_id"]), data)
+
+
+def load_satellite_image(image_id: str) -> Optional[Dict[str, Any]]:
+    return _read_json(_satellite_image_path(image_id))
+
+
+def list_satellite_images() -> List[Dict[str, Any]]:
+    analysis_dir = Path(settings.analysis_dir)
+    if not analysis_dir.exists():
+        return []
+    items = []
+    for p in sorted(analysis_dir.glob("*.meta.json"), key=_mtime, reverse=True):
+        data = _read_json(p)
+        if data:
+            items.append(data)
+    return items
+
+
+# ---------------------------------------------------------------------------
+# SAM2 Rasters (TIF files analyzed via SAM2 module for heatmap rendering)
+# ---------------------------------------------------------------------------
+
+def _sam2_raster_path(raster_id: str) -> Path:
+    return Path(settings.detections_dir) / f"raster_{raster_id}.json"
+
+
+def save_sam2_raster(data: Dict[str, Any]) -> None:
+    _write_json(_sam2_raster_path(data["raster_id"]), data)
+
+
+def load_sam2_raster(raster_id: str) -> Optional[Dict[str, Any]]:
+    return _read_json(_sam2_raster_path(raster_id))
+
+
+def list_sam2_rasters() -> List[Dict[str, Any]]:
+    det_dir = Path(settings.detections_dir)
+    if not det_dir.exists():
+        return []
+    items = []
+    for p in sorted(det_dir.glob("raster_*.json"), key=_mtime, reverse=True):
+        data = _read_json(p)
+        if data:
+            items.append(data)
+    return items

@@ -27,15 +27,11 @@
         <span v-if="raster.band_count">{{ raster.band_count }}波段</span>
       </div>
 
-      <div v-if="raster.status === 'pending'" class="raster-controls">
-        <el-button size="small" type="warning" @click="preprocessRaster(raster)">启动预处理</el-button>
-      </div>
-
-      <div v-if="raster.status === 'ready'" class="raster-controls">
+      <div class="raster-controls">
         <el-select v-model="selectedColormap[raster.id]" size="small" placeholder="色带" style="width:110px">
           <el-option v-for="c in colormaps" :key="c.value" :label="c.label" :value="c.value" />
         </el-select>
-        <el-button size="small" type="success" @click="loadToMap(raster)">加载地图</el-button>
+        <el-button size="small" type="success" @click="loadToMap(raster)">渲染到地图</el-button>
         <el-button size="small" @click="openCrossValidate(raster)">交叉验证</el-button>
       </div>
 
@@ -203,11 +199,13 @@ function statusLabel(status: string) {
 }
 
 function loadToMap(raster: RasterAsset) {
-  if (!raster.cog_path || !props.mapViewRef) return
+  if (!props.mapViewRef) return
   const colormap = selectedColormap.value[raster.id] || 'viridis'
   const titilerBase = import.meta.env.VITE_TITILER_URL || 'http://localhost:8080'
+  // Use cog_path if available, otherwise use original_path
+  const filePath = raster.cog_path || raster.original_path
   // Convert backend path (/app/data/...) to titiler-mounted path (/data/...)
-  const titilerPath = raster.cog_path.replace(/^\/app\/data\//, '/data/')
+  const titilerPath = filePath.replace(/^\/app\/data\//, '/data/')
   const url = `${titilerBase}/cog/tiles/{z}/{x}/{y}.png?url=${titilerPath}&colormap_name=${colormap}`
   props.mapViewRef.addRasterLayer(url, raster.filename)
 }
