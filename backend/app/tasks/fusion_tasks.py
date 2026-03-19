@@ -1,53 +1,40 @@
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
+import copy
 
 from app.tasks.celery_app import celery_app
-from app.config import settings
-
-
-def get_sync_session():
-    sync_url = settings.database_url.replace("postgresql+asyncpg://", "postgresql://")
-    engine = create_engine(sync_url)
-    SessionSync = sessionmaker(bind=engine)
-    return SessionSync()
 
 
 @celery_app.task(bind=True, name="tasks.run_fusion_job")
 def task_run_fusion_job(self, job_id: str):
     """Process a fusion job: merge raster metadata and mark job complete."""
-    import copy
-    from app.models.task import Job
-    from app.models.raster import RasterAsset
+    import app.storage as storage
 
-    db = get_sync_session()
     try:
-        job = db.query(Job).filter(Job.id == job_id).first()
+        job = storage.load_job(job_id)
         if not job:
             return {"error": "Job not found"}
 
-        job.status = "STARTED"
-        db.commit()
+        storage.update_job(job_id, {"status": "STARTED"})
 
-        result_data = job.result or {}
+        result_data = job.get("result") or {}
         raster_ids = result_data.get("raster_ids", [])
         method = result_data.get("method", "overlay")
 
         merged_bbox = None
         raster_details = []
         for rid in raster_ids:
-            raster = db.query(RasterAsset).filter(RasterAsset.id == rid).first()
-            if raster and raster.bbox:
+            raster = storage.load_raster_meta(rid)
+            if raster and raster.get("bbox"):
                 raster_details.append(
                     {
-                        "id": str(raster.id),
-                        "filename": raster.filename,
-                        "crs": raster.crs,
-                        "band_count": raster.band_count,
-                        "resolution": raster.resolution,
-                        "bbox": raster.bbox,
+                        "id": raster["id"],
+                        "filename": raster["filename"],
+                        "crs": raster.get("crs"),
+                        "band_count": raster.get("band_count"),
+                        "resolution": raster.get("resolution"),
+                        "bbox": raster.get("bbox"),
                     }
                 )
-                bbox = raster.bbox
+                bbox = raster["bbox"]
                 if merged_bbox is None:
                     merged_bbox = copy.deepcopy(bbox)
                 else:
@@ -56,28 +43,24 @@ def task_run_fusion_job(self, job_id: str):
                     merged_bbox["east"] = max(merged_bbox["east"], bbox["east"])
                     merged_bbox["north"] = max(merged_bbox["north"], bbox["north"])
 
-        job.result = {
-            **result_data,
-            "raster_details": raster_details,
-            "merged_bbox": merged_bbox,
-            "output_message": (
-                f"融合完成: 方法={method}, 栅格数量={len(raster_details)}"
-            ),
-        }
-        job.status = "SUCCESS"
-        db.commit()
+        storage.update_job(job_id, {
+            "status": "SUCCESS",
+            "result": {
+                **result_data,
+                "raster_details": raster_details,
+                "merged_bbox": merged_bbox,
+                "output_message": (
+                    f"融合完成: 方法={method}, 栅格数量={len(raster_details)}"
+                ),
+            },
+        })
 
         return {"job_id": job_id, "status": "SUCCESS"}
 
     except Exception as exc:
-        db.rollback()
         try:
-            job = db.query(Job).filter(Job.id == job_id).first()
-            if job:
-                job.status = "FAILURE"
-                db.commit()
+            import app.storage as st
+            st.update_job(job_id, {"status": "FAILURE"})
         except Exception:
             pass
         raise self.retry(exc=exc, max_retries=0)
-    finally:
-        db.close()

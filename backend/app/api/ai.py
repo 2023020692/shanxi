@@ -3,13 +3,19 @@
 Accepts a satellite image annotated with mine well points and returns
 simulated target-detection results together with heatmap grid data that
 the frontend can render as a TIF-style overlay.
+
+All detection results are persisted to disk so they can be listed and
+replayed later.
 """
 import random
 import uuid
-
-from fastapi import APIRouter, UploadFile, File
-from pydantic import BaseModel
+from datetime import datetime, timezone
 from typing import List, Optional
+
+from fastapi import APIRouter, HTTPException, UploadFile, File
+from pydantic import BaseModel
+
+import app.storage as storage
 
 router = APIRouter(tags=["sam2"])
 
@@ -33,6 +39,7 @@ class SAM2Result(BaseModel):
     detections: List[DetectionBox]
     heatmap_grid: List[dict]
     message: str
+    created_at: Optional[str] = None
 
 
 def _simulate_detections(n: int) -> List[DetectionBox]:
@@ -84,17 +91,34 @@ async def ai_info():
     }
 
 
+@router.get("/ai/results", response_model=List[SAM2Result])
+async def list_detections():
+    """List all saved SAM2 detection results (newest first)."""
+    return storage.list_detections()
+
+
+@router.get("/ai/results/{detection_id}", response_model=SAM2Result)
+async def get_detection(detection_id: str):
+    """Get a specific saved SAM2 detection result."""
+    data = storage.load_detection(detection_id)
+    if not data:
+        raise HTTPException(status_code=404, detail="Detection not found")
+    return data
+
+
 @router.post("/ai/detect", response_model=SAM2Result)
 async def ai_detect(file: Optional[UploadFile] = File(None)):
     """
     Run SAM2 target detection on a satellite image annotated with mine well points.
 
     Returns detected bounding boxes and a heatmap grid suitable for TIF rendering.
+    The result is persisted to disk and available via GET /api/ai/results.
     """
     if file and file.filename:
         file_size: int = file.size if file.size is not None else len(await file.read())
         detection_count = random.randint(3, 18)
-        return SAM2Result(
+        now = datetime.now(timezone.utc).isoformat()
+        result = SAM2Result(
             detection_id=str(uuid.uuid4()),
             filename=file.filename,
             file_size_bytes=file_size,
@@ -107,7 +131,10 @@ async def ai_detect(file: Optional[UploadFile] = File(None)):
                 f"SAM2目标识别完成，共识别到 {detection_count} 处煤矿井点目标，"
                 "热力图数据已生成，可在地图上渲染。"
             ),
+            created_at=now,
         )
+        storage.save_detection(result.model_dump())
+        return result
 
     return SAM2Result(
         detection_id="",
