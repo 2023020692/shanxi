@@ -32,10 +32,10 @@ import VectorLayer from 'ol/layer/Vector'
 import VectorSource from 'ol/source/Vector'
 import WMTS from 'ol/source/WMTS'
 import WMTSTileGrid from 'ol/tilegrid/WMTS'
-import XYZ from 'ol/source/XYZ'
 import GeoJSON from 'ol/format/GeoJSON'
 import Feature from 'ol/Feature'
 import Point from 'ol/geom/Point'
+import { fromExtent } from 'ol/geom/Polygon'
 import { Circle as CircleStyle, Fill, Stroke, Style, Text } from 'ol/style'
 import type { HeatgridResult } from '../api/analyticsApi'
 import type { EnrichmentGridPoint } from '../types'
@@ -120,24 +120,11 @@ const sam2Layer = new VectorLayer({
   visible: false,
 })
 
-/** Sync Deck.gl viewport to match the current OpenLayers view. */
-function syncDeckViewState() {
-  if (!map || !deck) return
-  const view = map.getView()
-  const center = view.getCenter()
-  const zoom = view.getZoom()
-  if (center && zoom !== undefined) {
-    deck.setProps({
-      viewState: {
-        longitude: center[0],
-        latitude: center[1],
-        zoom: zoom,
-        pitch: 0,
-        bearing: 0,
-      },
-    })
-  }
-}
+const rasterHeatSource = new VectorSource()
+const rasterHeatLayer = new VectorLayer({
+  source: rasterHeatSource,
+  visible: false,
+})
 
 onMounted(() => {
   map = new Map({
@@ -145,6 +132,7 @@ onMounted(() => {
     layers: [
       new TileLayer({ source: tiandituImgSource }),
       heatgridLayer,
+      rasterHeatLayer,
       enrichmentLayer,
       sam2Layer,
       wellLayer,
@@ -197,15 +185,6 @@ onUnmounted(() => {
   deck?.finalize()
 })
 
-function addRasterLayer(url: string, name: string) {
-  const layer = new TileLayer({
-    source: new XYZ({ url }),
-    opacity: 0.8,
-  })
-  ;(layer as unknown as { _name: string })._name = name
-  map?.addLayer(layer)
-}
-
 async function loadWells() {
   const res = await fetch('/api/wells')
   const geojson = await res.json()
@@ -216,30 +195,44 @@ async function loadWells() {
   wellSource.addFeatures(features)
 }
 
+/** Compute cell half-extents from a lon/lat grid for polygon cell rendering.
+ *
+ * Fallback step sizes (0.28° lon / 0.20° lat) match the default enrichment grid spacing.
+ * The 0.52 scaling factor (slightly over 0.5) ensures a tiny overlap between adjacent
+ * cells so there are no visible gaps at any zoom level.
+ */
+function _cellExtents(lons: number[], lats: number[]): { halfLon: number; halfLat: number } {
+  const uniqueLons = [...new Set(lons)].sort((a, b) => a - b)
+  const uniqueLats = [...new Set(lats)].sort((a, b) => a - b)
+  const lonStep = uniqueLons.length > 1 ? uniqueLons[1] - uniqueLons[0] : 0.28
+  const latStep = uniqueLats.length > 1 ? uniqueLats[1] - uniqueLats[0] : 0.20
+  // 0.52 (slightly > 0.5) ensures cells overlap slightly to eliminate visual gaps
+  return { halfLon: lonStep * 0.52, halfLat: latStep * 0.52 }
+}
+
 function showHeatgrid(data: HeatgridResult) {
   heatgridSource.clear()
   if (!data.features.length) return
 
   const maxCount = Math.max(...data.features.map((f) => f.properties.count))
+  const lons = data.features.map((f) => f.properties.lon)
+  const lats = data.features.map((f) => f.properties.lat)
+  const { halfLon, halfLat } = _cellExtents(lons, lats)
 
   const features = data.features.map((f) => {
     const { count, lon, lat } = f.properties
     const ratio = count / maxCount
     const r = Math.round(255 * Math.min(1, ratio * 2))
     const g = Math.round(255 * Math.max(0, 1 - ratio * 2))
-    const radius = Math.max(8, Math.round(ratio * 28))
+    // Alpha varies from 0.55 (sparse cells) to 0.90 (dense cells) for visual distinction
+    const alpha = 0.55 + ratio * 0.35
 
-    const feat = new Feature({
-      geometry: new Point([lon, lat]),
-      count,
-    })
+    const cellGeom = fromExtent([lon - halfLon, lat - halfLat, lon + halfLon, lat + halfLat])
+    const feat = new Feature({ geometry: cellGeom, count })
     feat.setStyle(
       new Style({
-        image: new CircleStyle({
-          radius,
-          fill: new Fill({ color: `rgba(${r}, ${g}, 50, 0.65)` }),
-          stroke: new Stroke({ color: 'rgba(255,255,255,0.4)', width: 1 }),
-        }),
+        fill: new Fill({ color: `rgba(${r}, ${g}, 50, ${alpha.toFixed(2)})` }),
+        stroke: new Stroke({ color: 'rgba(255,255,255,0.15)', width: 0.5 }),
         text: count > 1
           ? new Text({
               text: String(count),
@@ -357,17 +350,19 @@ function showEnrichmentLayer(grid: EnrichmentGridPoint[], colormap: string, name
   const minVal = Math.min(...grid.map((p) => p.value))
   const range = maxVal - minVal || 1
 
+  const lons = grid.map((p) => p.lon)
+  const lats = grid.map((p) => p.lat)
+  const { halfLon, halfLat } = _cellExtents(lons, lats)
+
   const features = grid.map((p) => {
-    const t = (p.value - minVal) / range  // 0..1
+    const t = (p.value - minVal) / range
     const color = colormapColor(colormap, t)
-    const feat = new Feature({ geometry: new Point([p.lon, p.lat]), value: p.value })
+    const cellGeom = fromExtent([p.lon - halfLon, p.lat - halfLat, p.lon + halfLon, p.lat + halfLat])
+    const feat = new Feature({ geometry: cellGeom, value: p.value })
     feat.setStyle(
       new Style({
-        image: new CircleStyle({
-          radius: 10,
-          fill: new Fill({ color }),
-          stroke: new Stroke({ color: 'rgba(255,255,255,0.2)', width: 1 }),
-        }),
+        fill: new Fill({ color }),
+        stroke: new Stroke({ color: 'rgba(255,255,255,0.1)', width: 0.5 }),
       }),
     )
     return feat
@@ -384,29 +379,77 @@ function showEnrichmentLayer(grid: EnrichmentGridPoint[], colormap: string, name
   colorBarVisible.value = true
 }
 
-/** Render SAM2 heatmap grid onto the map. */
+/** Render a raster's heatmap grid onto the map with the given colormap. */
+function showRasterLayer(grid: EnrichmentGridPoint[], colormap: string, name: string) {
+  rasterHeatSource.clear()
+
+  if (!grid.length) {
+    rasterHeatLayer.setVisible(false)
+    colorBarVisible.value = false
+    return
+  }
+
+  const maxVal = Math.max(...grid.map((p) => p.value))
+  const minVal = Math.min(...grid.map((p) => p.value))
+  const range = maxVal - minVal || 1
+
+  const lons = grid.map((p) => p.lon)
+  const lats = grid.map((p) => p.lat)
+  const { halfLon, halfLat } = _cellExtents(lons, lats)
+
+  const features = grid.map((p) => {
+    const t = (p.value - minVal) / range
+    const color = colormapColor(colormap, t)
+    const cellGeom = fromExtent([p.lon - halfLon, p.lat - halfLat, p.lon + halfLon, p.lat + halfLat])
+    const feat = new Feature({ geometry: cellGeom, value: p.value })
+    feat.setStyle(
+      new Style({
+        fill: new Fill({ color }),
+        stroke: new Stroke({ color: 'rgba(255,255,255,0.1)', width: 0.5 }),
+      }),
+    )
+    return feat
+  })
+
+  rasterHeatSource.addFeatures(features)
+  rasterHeatLayer.setVisible(true)
+
+  colorBarTitle.value = name + ' - 栅格数据'
+  colorBarGradient.value = buildGradient(colormap)
+  colorBarMin.value = minVal.toFixed(2)
+  colorBarMax.value = maxVal.toFixed(2)
+  colorBarVisible.value = true
+}
+
+/** Render SAM2 heatmap grid onto the map as raster-style polygon cells. */
 function showSAM2Heatmap(
   grid: Array<{ lon: number; lat: number; intensity: number }>,
   colormap: string,
 ) {
   sam2Source.clear()
-  if (!grid.length) return
+  if (!grid.length) {
+    sam2Layer.setVisible(false)
+    colorBarVisible.value = false
+    return
+  }
 
   const maxI = Math.max(...grid.map((p) => p.intensity))
   const minI = Math.min(...grid.map((p) => p.intensity))
   const range = maxI - minI || 1
 
+  const lons = grid.map((p) => p.lon)
+  const lats = grid.map((p) => p.lat)
+  const { halfLon, halfLat } = _cellExtents(lons, lats)
+
   const features = grid.map((p) => {
     const t = (p.intensity - minI) / range
     const color = colormapColor(colormap, t)
-    const feat = new Feature({ geometry: new Point([p.lon, p.lat]), intensity: p.intensity })
+    const cellGeom = fromExtent([p.lon - halfLon, p.lat - halfLat, p.lon + halfLon, p.lat + halfLat])
+    const feat = new Feature({ geometry: cellGeom, intensity: p.intensity })
     feat.setStyle(
       new Style({
-        image: new CircleStyle({
-          radius: 12,
-          fill: new Fill({ color }),
-          stroke: new Stroke({ color: 'rgba(255,255,255,0.15)', width: 1 }),
-        }),
+        fill: new Fill({ color }),
+        stroke: new Stroke({ color: 'rgba(255,255,255,0.1)', width: 0.5 }),
       }),
     )
     return feat
@@ -435,37 +478,43 @@ function colormapRGBA(name: string, t: number): [number, number, number, number]
       const r = Math.round(Math.min(1, t * 3) * 255)
       const g = Math.round(Math.max(0, t * 3 - 1) * 255)
       const b = Math.round(Math.max(0, t * 3 - 2) * 255)
-      return [r, g, b, 191]
+      return `rgba(${r},${g},${b},0.82)`
     }
     case 'plasma': {
       const r = Math.round((0.05 + t * 0.9) * 255)
       const g = Math.round(Math.max(0, (0.5 - Math.abs(t - 0.5)) * 2) * 180)
       const b = Math.round((1 - t) * 200)
-      return [r, g, b, 191]
+      return `rgba(${r},${g},${b},0.82)`
     }
     case 'inferno': {
       const r = Math.round(t * 255)
       const g = Math.round(t * t * 180)
       const b = Math.round(Math.max(0, (0.5 - t) * 2) * 200)
-      return [r, g, b, 191]
+      return `rgba(${r},${g},${b},0.82)`
     }
     case 'viridis': {
       const r = Math.round((0.26 + t * 0.66) * 255)
       const g = Math.round((0.0 + t * 0.89) * 255)
       const b = Math.round((0.33 + (0.5 - Math.abs(t - 0.5)) * 0.6) * 255)
-      return [r, g, b, 191]
+      return `rgba(${r},${g},${b},0.82)`
     }
     case 'RdYlGn': {
-      const r = t < 0.5 ? 255 : Math.round((1 - (t - 0.5) * 2) * 255)
-      const g = t < 0.5 ? Math.round(t * 2 * 255) : 255
-      return [r, g, 0, 191]
+      const r = Math.round(Math.min(1, (1 - t) * 2) * 220)
+      const g = Math.round(Math.min(1, t * 2) * 200)
+      const b = 30
+      return `rgba(${r},${g},${b},0.82)`
     }
-    default: {
-      // rainbow
+    case 'rainbow': {
       const r = Math.round(Math.abs(t * 2 - 0.5) * 255)
       const g = Math.round(Math.sin(t * Math.PI) * 255)
       const b = Math.round((1 - t) * 255)
-      return [r, g, b, 191]
+      return `rgba(${r},${g},${b},0.82)`
+    }
+    default: {
+      const r = Math.round(Math.abs(t * 2 - 0.5) * 255)
+      const g = Math.round(Math.sin(t * Math.PI) * 255)
+      const b = Math.round((1 - t) * 255)
+      return `rgba(${r},${g},${b},0.82)`
     }
   }
 }
@@ -475,14 +524,14 @@ function buildGradient(name: string): string {
   const stops = [0, 0.25, 0.5, 0.75, 1]
     .map((t) => {
       const c = colormapColor(name, t)
-        .replace(/[\d.]+\)$/, '1)')  // fully opaque in legend
+        .replace('0.82', '1')  // fully opaque in legend
       return `${c} ${t * 100}%`
     })
     .join(', ')
   return `linear-gradient(to right, ${stops})`
 }
 
-defineExpose({ addRasterLayer, loadWells, showHeatgrid, showEnrichmentLayer, showSAM2Heatmap, renderTifLayer, clearTifLayer })
+defineExpose({ loadWells, showHeatgrid, showEnrichmentLayer, showRasterLayer, showSAM2Heatmap })
 </script>
 
 <style scoped>

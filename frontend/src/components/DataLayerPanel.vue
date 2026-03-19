@@ -112,14 +112,15 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { DataLine, Location } from '@element-plus/icons-vue'
-import type { RasterAsset, CrossValidateResult } from '../types'
+import { ElMessage } from 'element-plus'
+import type { RasterAsset, CrossValidateResult, EnrichmentGridPoint } from '../types'
 import { rasterApi } from '../api/rasterApi'
 import { wellApi } from '../api/wellApi'
 import { crossValidateApi, REFERENCE_DATASETS } from '../api/crossValidateApi'
 
 const props = defineProps<{
   mapViewRef: {
-    addRasterLayer: (url: string, name: string) => void
+    showRasterLayer: (grid: EnrichmentGridPoint[], colormap: string, name: string) => void
     loadWells: () => Promise<void>
   } | null
 }>()
@@ -198,16 +199,16 @@ function statusLabel(status: string) {
   return { ready: '就绪', processing: '处理中', pending: '待处理', failed: '失败' }[status] || status
 }
 
-function loadToMap(raster: RasterAsset) {
+async function loadToMap(raster: RasterAsset) {
   if (!props.mapViewRef) return
-  const colormap = selectedColormap.value[raster.id] || 'viridis'
-  const titilerBase = import.meta.env.VITE_TITILER_URL || 'http://localhost:8080'
-  // Use cog_path if available, otherwise use original_path
-  const filePath = raster.cog_path || raster.original_path
-  // Convert backend path (/app/data/...) to titiler-mounted path (/data/...)
-  const titilerPath = filePath.replace(/^\/app\/data\//, '/data/')
-  const url = `${titilerBase}/cog/tiles/{z}/{x}/{y}.png?url=${titilerPath}&colormap_name=${colormap}`
-  props.mapViewRef.addRasterLayer(url, raster.filename)
+  try {
+    const colormap = selectedColormap.value[raster.id] || 'viridis'
+    const data = await rasterApi.getHeatmapGrid(raster.id)
+    props.mapViewRef.showRasterLayer(data.grid || [], colormap, raster.filename)
+    ElMessage.success(`"${raster.filename}" 已渲染到地图`)
+  } catch {
+    ElMessage.error('渲染失败，请重试')
+  }
 }
 
 function openCrossValidate(raster: RasterAsset) {
