@@ -36,6 +36,10 @@ class Settings(BaseSettings):
     def analysis_dir(self) -> Path:
         return Path(self.data_dir) / "analysis"
 
+    @property
+    def satellite2_dir(self) -> Path:
+        return Path(self.data_dir) / "satellite2"
+
     class Config:
         env_file = ".env"
         extra = "ignore"

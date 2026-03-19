@@ -1,5 +1,8 @@
 <template>
-  <div ref="mapEl" class="map-view"></div>
+  <div class="map-container" ref="mapContainer">
+    <div ref="mapEl" class="map-view"></div>
+    <canvas ref="deckCanvas" class="deck-canvas"></canvas>
+  </div>
   <div v-if="popupInfo" class="map-popup" :style="{ left: popupPos.x + 'px', top: popupPos.y + 'px' }">
     <div class="popup-content">
       <strong>{{ popupInfo.name }}</strong>
@@ -37,6 +40,9 @@ import { Circle as CircleStyle, Fill, Stroke, Style, Text } from 'ol/style'
 import type { HeatgridResult } from '../api/analyticsApi'
 import type { EnrichmentGridPoint } from '../types'
 import 'ol/ol.css'
+import { Deck } from '@deck.gl/core'
+import { BitmapLayer } from '@deck.gl/layers'
+import { fromUrl } from 'geotiff'
 
 // 天地图影像服务 Token（通过环境变量 VITE_TIANDITU_TOKEN 配置）
 const TIANDITU_TOKEN = import.meta.env.VITE_TIANDITU_TOKEN || '5feb116433ab9965a1460171bc2a6203'
@@ -69,8 +75,11 @@ const tiandituImgSource = new WMTS({
   crossOrigin: 'anonymous',
 })
 
+const mapContainer = ref<HTMLDivElement | null>(null)
 const mapEl = ref<HTMLDivElement | null>(null)
+const deckCanvas = ref<HTMLCanvasElement | null>(null)
 let map: Map | null = null
+let deck: Deck | null = null
 const popupInfo = ref<{ name: string; props: Record<string, unknown> } | null>(null)
 const popupPos = ref({ x: 0, y: 0 })
 
@@ -135,6 +144,28 @@ onMounted(() => {
     }),
   })
 
+  // Initialise Deck.gl WebGL overlay (controller:false – OL owns navigation)
+  if (deckCanvas.value) {
+    deck = new Deck({
+      canvas: deckCanvas.value,
+      width: '100%',
+      height: '100%',
+      initialViewState: {
+        longitude: 111.5,
+        latitude: 37.5,
+        zoom: 7,
+        pitch: 0,
+        bearing: 0,
+      },
+      controller: false,
+      layers: [],
+    })
+  }
+
+  // Keep Deck.gl viewport in sync with OL map movements
+  map.on('moveend', syncDeckViewState)
+  map.on('postrender', syncDeckViewState)
+
   map.on('click', (evt) => {
     const features = map!.getFeaturesAtPixel(evt.pixel)
     if (features && features.length > 0) {
@@ -151,6 +182,7 @@ onMounted(() => {
 
 onUnmounted(() => {
   map?.setTarget(undefined)
+  deck?.finalize()
 })
 
 async function loadWells() {
@@ -215,6 +247,97 @@ function showHeatgrid(data: HeatgridResult) {
 
   heatgridSource.addFeatures(features)
   heatgridLayer.setVisible(true)
+}
+
+/**
+ * Render a GeoTIFF file using geotiff.js (for proper geo-referencing) and
+ * Deck.gl BitmapLayer (WebGL/GPU-accelerated).
+ *
+ * If the file is accessible via tifUrl the TIF is fetched, its bounding box
+ * is extracted from the embedded GeoTransform/CRS information, and the band
+ * data is colourised with the chosen colormap before being handed to Deck.gl.
+ * Falls back to the grid-point approach when no tifUrl is provided.
+ */
+async function renderTifLayer(
+  tifUrl: string,
+  colormap: string,
+  title: string,
+): Promise<void> {
+  if (!deck) return
+
+  try {
+    // Use geotiff.js to read GeoTransform and CRS, ensuring correct geographic placement
+    const tiff = await fromUrl(tifUrl)
+    const image = await tiff.getImage()
+
+    // getBoundingBox() returns [west, south, east, north] using the embedded GeoTransform
+    const [west, south, east, north] = image.getBoundingBox()
+
+    const width = image.getWidth()
+    const height = image.getHeight()
+
+    // Read all rasters (first band used for single-band data)
+    const rasters = await image.readRasters()
+    const band = rasters[0] as Float32Array | Uint8Array | Int16Array
+
+    // Normalise band values to [0, 1]
+    let minVal = Infinity
+    let maxVal = -Infinity
+    for (let i = 0; i < band.length; i++) {
+      if (band[i] < minVal) minVal = band[i]
+      if (band[i] > maxVal) maxVal = band[i]
+    }
+    const range = maxVal - minVal || 1
+
+    // Build a colourised RGBA image using the selected colormap (CPU → GPU via BitmapLayer)
+    const imageCanvas = document.createElement('canvas')
+    imageCanvas.width = width
+    imageCanvas.height = height
+    const ctx = imageCanvas.getContext('2d')!
+    const imgData = ctx.createImageData(width, height)
+
+    for (let i = 0; i < band.length; i++) {
+      const t = (band[i] - minVal) / range
+      const [r, g, b, a] = colormapRGBA(colormap, t)
+      imgData.data[i * 4] = r
+      imgData.data[i * 4 + 1] = g
+      imgData.data[i * 4 + 2] = b
+      imgData.data[i * 4 + 3] = a
+    }
+    ctx.putImageData(imgData, 0, 0)
+
+    // Hand the geo-referenced bitmap to Deck.gl for WebGL/GPU rendering
+    deck.setProps({
+      layers: [
+        new BitmapLayer({
+          id: 'geotiff-layer',
+          bounds: [west, south, east, north] as [number, number, number, number],
+          image: imageCanvas.toDataURL(),
+          opacity: 0.75,
+        }),
+      ],
+    })
+
+    // Update the color bar legend
+    colorBarTitle.value = title
+    colorBarGradient.value = buildGradient(colormap)
+    colorBarMin.value = minVal.toFixed(2)
+    colorBarMax.value = maxVal.toFixed(2)
+    colorBarVisible.value = true
+
+    // Hide the old OL vector layers since Deck.gl takes over
+    enrichmentLayer.setVisible(false)
+    sam2Layer.setVisible(false)
+  } catch (err) {
+    console.warn('renderTifLayer: geotiff read failed, falling back to grid render', err)
+    throw err
+  }
+}
+
+/** Clear the Deck.gl TIF layer. */
+function clearTifLayer() {
+  deck?.setProps({ layers: [] })
+  colorBarVisible.value = false
 }
 
 /** Render enrichment index grid onto the map with the given colormap. */
@@ -344,9 +467,14 @@ function showSAM2Heatmap(
 
 /** Map a normalised t ∈ [0,1] to an RGBA color string for a named colormap. */
 function colormapColor(name: string, t: number): string {
+  const [r, g, b, a] = colormapRGBA(name, t)
+  return `rgba(${r},${g},${b},${(a / 255).toFixed(2)})`
+}
+
+/** Map a normalised t ∈ [0,1] to [R,G,B,A] (0-255) for a named colormap. */
+function colormapRGBA(name: string, t: number): [number, number, number, number] {
   switch (name) {
     case 'hot': {
-      // black→red→yellow→white
       const r = Math.round(Math.min(1, t * 3) * 255)
       const g = Math.round(Math.max(0, t * 3 - 1) * 255)
       const b = Math.round(Math.max(0, t * 3 - 2) * 255)
@@ -407,10 +535,26 @@ defineExpose({ loadWells, showHeatgrid, showEnrichmentLayer, showRasterLayer, sh
 </script>
 
 <style scoped>
+.map-container {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 400px;
+}
+
 .map-view {
   width: 100%;
   height: 100%;
   min-height: 400px;
+}
+
+.deck-canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
 }
 
 .map-popup {

@@ -51,7 +51,13 @@
           @click="viewImage(img)"
         >
           <div class="image-thumb-wrap">
-            <img :src="img.image_url" class="image-thumb" :alt="img.filename" @error="onImgError" />
+            <!-- Show satellite-2 image if available, else satellite-1 -->
+            <img
+              :src="img.satellite2_url || img.image_url"
+              class="image-thumb"
+              :alt="img.filename"
+              @error="onImgError"
+            />
             <div class="image-overlay">
               <el-icon><ZoomIn /></el-icon>
             </div>
@@ -60,6 +66,7 @@
             <span class="image-filename" :title="img.filename">{{ img.filename }}</span>
             <span class="image-meta">{{ formatDate(img.created_at) }}</span>
             <el-tag type="success" size="small">{{ img.message }}</el-tag>
+            <el-tag v-if="img.satellite2_url" type="info" size="small" style="margin-top:2px">卫星2</el-tag>
           </div>
         </div>
       </div>
@@ -149,11 +156,14 @@
       <div class="preview-container">
         <img
           v-if="previewImage"
-          :src="previewImage.image_url"
+          :src="previewImage.satellite2_url || previewImage.image_url"
           class="preview-img"
           :alt="previewImage?.filename"
         />
       </div>
+      <template v-if="previewImage?.satellite2_url" #footer>
+        <span style="font-size:12px;color:#90caf9">路径已转换为卫星2存放目录</span>
+      </template>
     </el-dialog>
   </div>
 </template>
@@ -171,6 +181,8 @@ const props = defineProps<{
       grid: Array<{ lon: number; lat: number; intensity: number }>,
       colormap: string,
     ) => void
+    renderTifLayer: (tifUrl: string, colormap: string, title: string) => Promise<void>
+    clearTifLayer: () => void
   } | null
 }>()
 
@@ -220,6 +232,7 @@ async function runImageAnalysis() {
   try {
     const result = await sam2Api.analyzeImage(selectedImgFile.value)
     ElMessage.success('分析成功，卫星图像已添加到列表')
+    // result.satellite2_url is populated by the backend after satellite-1 analysis
     satelliteImages.value.unshift(result)
     selectedImgFile.value = null
     if (imgInput.value) imgInput.value.value = ''
@@ -276,15 +289,31 @@ async function loadSAM2Rasters() {
   }
 }
 
-function toggleRasterHeatmap(raster: SAM2Raster) {
+async function toggleRasterHeatmap(raster: SAM2Raster) {
   if (!props.mapViewRef) return
   if (activeRasterId.value === raster.raster_id) {
-    // Cancel render - clear heatmap
-    props.mapViewRef.showSAM2Heatmap([], 'hot')
+    // Cancel render
+    if (raster.tif_url) {
+      props.mapViewRef.clearTifLayer()
+    } else {
+      props.mapViewRef.showSAM2Heatmap([], 'hot')
+    }
     activeRasterId.value = null
     ElMessage.info('已取消热力图渲染')
   } else {
     const colormap = rasterColormaps.value[raster.raster_id] || 'hot'
+    // Prefer geotiff.js + Deck.gl WebGL rendering when TIF URL is available
+    if (raster.tif_url) {
+      try {
+        await props.mapViewRef.renderTifLayer(raster.tif_url, colormap, `${raster.filename} - SAM2热力图`)
+        activeRasterId.value = raster.raster_id
+        ElMessage.success(`"${raster.filename}" TIF已通过WebGL渲染到地图`)
+        return
+      } catch {
+        // Fall through to grid-based rendering
+      }
+    }
+    // Fall back to grid-point heatmap
     props.mapViewRef.showSAM2Heatmap(raster.heatmap_grid, colormap)
     activeRasterId.value = raster.raster_id
     ElMessage.success(`"${raster.filename}" 热力图已渲染到地图`)
