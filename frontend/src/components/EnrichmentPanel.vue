@@ -30,14 +30,6 @@
         <div v-if="readyRasters.length === 0" class="hint">暂无就绪TIF数据，请先在数据图层模块上传并预处理</div>
       </el-form-item>
 
-      <el-form-item label="分析方法">
-        <el-select v-model="form.method" style="width:100%">
-          <el-option value="weighted_composite" label="加权复合指数法" />
-          <el-option value="pca" label="主成分分析法（PCA）" />
-          <el-option value="spectral_index" label="光谱指数法" />
-        </el-select>
-      </el-form-item>
-
       <el-button
         type="primary"
         :disabled="!form.name || form.selectedRasterIds.length === 0"
@@ -120,7 +112,6 @@ const props = defineProps<{
 const form = ref({
   name: '',
   selectedRasterIds: [] as string[],
-  method: 'weighted_composite',
 })
 
 const colormaps = [
@@ -166,7 +157,6 @@ async function runAnalysis() {
     const result = await enrichmentApi.analyze(
       form.value.name,
       form.value.selectedRasterIds,
-      form.value.method,
     )
     results.value.unshift(result)
     form.value.name = ''
