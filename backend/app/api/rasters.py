@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, UploadFile, File, HTTPException
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 import app.storage as storage
